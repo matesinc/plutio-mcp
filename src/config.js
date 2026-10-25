@@ -28,10 +28,15 @@ function loadConfig() {
     userAgent: getEnv('PLUTIO_USER_AGENT', 'plutio-mcp/0.3.0'),
     mode: normalizeMode(getEnv('PLUTIO_MCP_MODE', 'readonly')),
     maxRequestsPerHour: parsePositiveInt(getEnv('PLUTIO_MAX_REQUESTS_PER_HOUR'), 1000),
-    // Optional OAuth consent passcode. If unset, /authorize auto-approves any
-    // registered client. If set, the user has to type it into a small consent
-    // page during the OAuth flow.
+    // OAuth consent passcode. The user types it into a small consent page
+    // during the OAuth flow. If unset, the OAuth flow is DISABLED (fail closed)
+    // unless MCP_ALLOW_OPEN_AUTHORIZE=true is set explicitly.
     authPasscode: getEnv('MCP_AUTH_PASSCODE') || null,
+    allowOpenAuthorize: String(getEnv('MCP_ALLOW_OPEN_AUTHORIZE', 'false')).toLowerCase() === 'true',
+    // Static API keys (comma separated). Any of these is accepted on /mcp as
+    // "Authorization: Bearer <key>" or "x-api-key: <key>". Simplest option for
+    // plugins and .mcp.json configs that can send headers.
+    apiKeys: String(getEnv('MCP_API_KEYS', '') || '').split(',').map((k) => k.trim()).filter((k) => k.length >= 24),
     // If true, /mcp requires a valid OAuth bearer token. Default true. Set to
     // 'false' if a layer in front (Cloudflare Access, basic auth proxy, etc.)
     // is already gating the endpoint.
