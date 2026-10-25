@@ -274,3 +274,12 @@ The implementation work so far established that:
 - several high-value read endpoints and task-create payloads have been validated against a live Plutio workspace
 
 Those findings informed this server, but the code itself intentionally avoids hardcoding workspace-specific assumptions.
+
+## Access control
+
+The HTTP server fails closed. `/mcp` needs one of:
+
+- **API key**: set `MCP_API_KEYS` (comma separated, 24+ chars) and send `Authorization: Bearer <key>` or `x-api-key: <key>`. Best for plugins and `.mcp.json` configs.
+- **OAuth**: for claude.ai connectors. Set `MCP_AUTH_PASSCODE`; users enter it on the consent page. Without it, `/oauth/authorize` returns 503.
+
+`/health` returns only `{"ok":true}`. `/ready` requires auth.

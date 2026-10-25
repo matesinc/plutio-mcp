@@ -8,6 +8,21 @@ const { createTools } = require('./tools');
 const { buildTools: buildEscapeHatchTools } = require('./escape-hatch');
 const { createClient360 } = require('./client-360');
 const oauth = require('./oauth');
+const crypto = require('node:crypto');
+
+function safeEqual(a, b) {
+  const ab = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
+}
+
+function hasValidApiKey(req, apiKeys) {
+  if (!apiKeys || apiKeys.length === 0) return false;
+  const auth = req.headers.authorization || '';
+  const presented = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : String(req.headers['x-api-key'] || '').trim();
+  if (!presented) return false;
+  return apiKeys.some((k) => safeEqual(k, presented));
+}
 const {
   getBusinessSchema,
   findPeopleSchema,
@@ -265,11 +280,16 @@ async function startHttpServer() {
 
       if (req.method === 'GET' && url.pathname === '/health') {
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, service: 'plutio-mcp', business: config.business, mode: config.mode, version: '0.3.0', oauth: config.oauthEnabled }));
+        res.end(JSON.stringify({ ok: true }));
         return;
       }
 
       if (req.method === 'GET' && url.pathname === '/ready') {
+        if (!hasValidApiKey(req, config.apiKeys) && !oauth.isAuthorized(req)) {
+          res.writeHead(401, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'unauthorized' }));
+          return;
+        }
         // Probe Plutio's OAuth endpoint as a real readiness signal.
         try {
           await client.getAccessToken();
@@ -299,6 +319,11 @@ async function startHttpServer() {
         return;
       }
       if (req.method === 'GET' && url.pathname === '/oauth/authorize') {
+        if (!config.authPasscode && !config.allowOpenAuthorize) {
+          res.writeHead(503, { 'content-type': 'text/plain' });
+          res.end('OAuth sign-in is disabled: MCP_AUTH_PASSCODE is not set on the server.');
+          return;
+        }
         await oauth.handleAuthorize(req, res, url, { passcode: config.authPasscode });
         return;
       }
@@ -316,7 +341,7 @@ async function startHttpServer() {
       // Bearer-token gate on the MCP endpoint itself. Returning 401 with a
       // RFC-compliant WWW-Authenticate is what triggers MCP clients (Claude
       // desktop / Cowork / etc.) to discover and run the OAuth flow.
-      if (config.oauthEnabled && !oauth.isAuthorized(req)) {
+      if (config.oauthEnabled && !hasValidApiKey(req, config.apiKeys) && !oauth.isAuthorized(req)) {
         oauth.unauthorizedResponse(res, baseUrl);
         return;
       }
